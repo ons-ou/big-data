@@ -1,0 +1,4 @@
+.idea
+spark-kafka/target
+kafka-producers/target
+hadoop/target
