@@ -5,6 +5,15 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
 import org.apache.spark.streaming.Durations;
 import org.apache.spark.streaming.api.java.JavaDStream;
 import org.apache.spark.streaming.api.java.JavaInputDStream;
@@ -15,7 +24,9 @@ import org.apache.spark.streaming.kafka010.KafkaUtils;
 import org.apache.spark.streaming.kafka010.LocationStrategies;
 
 import org.apache.kafka.common.serialization.StringDeserializer;
+import scala.Tuple2;
 import spark.stream.NameCounter;
+import utils.GenresList;
 
 import java.util.*;
 
@@ -25,12 +36,15 @@ public class SparkKafkaMain {
         Logger.getLogger("org").setLevel(Level.ALL);
         Logger.getLogger("akka").setLevel(Level.ALL);
 
-        SparkConf sparkConf = new SparkConf();
-        sparkConf.setMaster("local[*]");
-        sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
-        sparkConf.setAppName("App");
+        SparkConf conf = new SparkConf()
+                .setAppName("App")
+                .setMaster("local[*]")
+                .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .set("spark.jars", "mongo-spark-connector_2.12:3.0.0");
 
-        JavaStreamingContext streamingContext = new JavaStreamingContext(sparkConf, Durations.seconds(8));
+        SparkSession spark = SparkSession.builder().config(conf).getOrCreate();
+
+        JavaStreamingContext streamingContext = new JavaStreamingContext(JavaSparkContext.fromSparkContext(spark.sparkContext()), Durations.seconds(8));
         streamingContext.checkpoint("/root/spark-checkpoint");
 
         Map<String, Object> kafkaParams = new HashMap<>();
@@ -48,12 +62,36 @@ public class SparkKafkaMain {
                 ConsumerStrategies.Subscribe(topics, kafkaParams));
         JavaDStream<String> data = messages.map(ConsumerRecord::value);
 
-        JavaPairDStream<String, ?> result = new NameCounter().process(data);
+        JavaPairDStream<Tuple2<Integer, String>, Integer> result = new NameCounter().process(data);
+        String collectionName = topics.contains("GENRES") ? "trending_genres" : "trending_keywords";
 
+        result.foreachRDD(
+                rdd -> {
+                    // Convert each RDD to a DataFrame
+                    JavaRDD<Row> rowRDD = rdd.map(tuple -> {
+                        Tuple2<Integer, String> genre = tuple._1();
+                        Integer id = genre._1();
+                        String name = genre._2();
+                        return RowFactory.create(id, name, tuple._2());
+                    });
+                    StructType schema = DataTypes.createStructType(new StructField[]{
+                            DataTypes.createStructField("_id", DataTypes.IntegerType, false),
+                            DataTypes.createStructField("name", DataTypes.StringType, true),
+                            DataTypes.createStructField("count", DataTypes.IntegerType, true)
+                    });
+                    Dataset<Row> df = spark.createDataFrame(rowRDD, schema);
+
+                    df
+                            .write()
+                            .format("com.mongodb.spark.sql.DefaultSource")
+                            .mode("overwrite")
+                            .option("spark.mongodb.output.uri", "mongodb://mongo-container:27017/db." + collectionName)
+                            .save();
+                }
+        );
         result.print();
 
         streamingContext.start();
         streamingContext.awaitTermination();
-
     }
 }

@@ -19,7 +19,7 @@ public class SumReducer
             sum += val.get();
         }
         result.set(sum);
-
+        System.out.println(key  + " " + sum);
         context.write(key, result);
     }
 }

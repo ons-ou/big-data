@@ -25,9 +25,9 @@ public class GenreMapper extends Mapper<Object, Text, Text, IntWritable> {
             int year = YearExtractor.extractYear(tokens[14]);
 
             List<String> genreNames = NamesExtractor.extractName(genres);
-
             for (String genre : genreNames) {
                 genreYearPair.set(genre + "," + year);
+                System.out.println("Mapper->" + genreYearPair.toString());
                 context.write(genreYearPair, one);
             }
         } catch (Exception exception){

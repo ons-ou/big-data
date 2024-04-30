@@ -4,7 +4,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.ml.Pipeline;
 import org.apache.spark.ml.PipelineModel;
@@ -17,7 +17,6 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.streaming.Durations;
 import org.apache.spark.streaming.api.java.JavaDStream;
 import org.apache.spark.streaming.api.java.JavaInputDStream;
-import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaStreamingContext;
 import org.apache.spark.streaming.kafka010.ConsumerStrategies;
 import org.apache.spark.streaming.kafka010.KafkaUtils;
@@ -34,11 +33,13 @@ public class SparkMLMain {
         Logger.getLogger("org").setLevel(Level.ERROR);
         Logger.getLogger("akka").setLevel(Level.ERROR);
 
-        SparkSession spark = SparkSession
-                .builder()
-                .appName("App")
-                .master("local[*]")
-                .getOrCreate();
+        SparkConf conf = new SparkConf()
+                .setAppName("App")
+                .setMaster("local[*]")
+                .set("spark.jars", "mongo-spark-connector_2.12:3.0.0");
+
+        SparkSession spark = SparkSession.builder().config(conf).getOrCreate();
+
 
         // Load pipeline
         Pipeline pipeline = Pipeline.load("hdfs://hadoop-master:9000/user/root/model");
@@ -87,22 +88,18 @@ public class SparkMLMain {
                     PipelineModel pipelineModel = pipeline.fit(df);
                     Dataset<Row> predictions = pipelineModel.transform(df);
 
-                    // Selecting original_title and prediction columns
-                    Dataset<Row> selectedColumns = predictions.select("original_title", "prediction");
+                    Dataset<Row> result = df
+                            .filter("original_title not like '%??%'")
+                            .join(predictions, "original_title").select(df.col("*"), predictions.col("prediction").as("revenue"));
 
-                    JavaRDD<Tuple2<String, Double>> javaRDD = selectedColumns.toJavaRDD().map(row -> {
-                        String originalTitle = row.getAs("original_title");
-                        double prediction = row.getAs("prediction");
-                        Logger.getLogger(SparkMLMain.class).log(Level.INFO, originalTitle + ":" + prediction);
+                    result.show();
 
-                        return new Tuple2<>(originalTitle, prediction);
-                    });
-
-                    // Further processing of the JavaRDD if needed
-                    javaRDD.foreach(tuple -> {
-                        // Process each tuple (original_title, prediction) as needed
-                        System.out.println(tuple._1 + ":" + tuple._2);
-                    });
+                    result
+                            .write()
+                            .format("com.mongodb.spark.sql.DefaultSource")
+                            .mode("append")
+                            .option("spark.mongodb.output.uri", "mongodb://mongo-container:27017/db.revenue_prediction")
+                            .save();
                 }
             }
         });

@@ -1,14 +1,16 @@
 package hadoop.mapreduce;
 
+import com.mongodb.hadoop.BSONFileOutputFormat;
+import com.mongodb.hadoop.io.BSONWritable;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
-import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
 import java.io.IOException;
 
@@ -45,8 +47,8 @@ public class MapReduceMain {
         FileOutputFormat.setOutputPath(job, new Path(args[2]));
 
         if (type == OperationTypes.DIST_BY_GENRE) {
-            MultipleOutputs.addNamedOutput(job, "combiner", TextOutputFormat.class, Text.class, IntWritable.class);
-            job.setOutputFormatClass(TextOutputFormat.class);
+            MultipleOutputs.addNamedOutput(job, "combiner", BSONFileOutputFormat.class, NullWritable.class, BSONWritable.class);
+            job.setOutputFormatClass(BSONFileOutputFormat.class);
         }
 
         job.waitForCompletion(true);
