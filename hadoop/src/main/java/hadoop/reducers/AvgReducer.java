@@ -1,6 +1,5 @@
 package hadoop.reducers;
 
-import com.mongodb.hadoop.io.BSONWritable;
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
@@ -9,10 +8,10 @@ import org.bson.BasicBSONObject;
 
 import java.io.IOException;
 
-public class AvgBsonReducer
-        extends Reducer<Text, FloatWritable, NullWritable, BSONWritable> {
+public class AvgReducer
+        extends Reducer<Text, FloatWritable, Text, FloatWritable> {
 
-    private BSONWritable result = new BSONWritable();
+    private FloatWritable result = new FloatWritable();
 
     public void reduce(Text key, Iterable<FloatWritable> values,
                        Context context
@@ -23,14 +22,9 @@ public class AvgBsonReducer
             sum += val.get();
             count++;
         }
-        BasicBSONObject bsonObject = new BasicBSONObject();
-        bsonObject.put("name", key.toString());
-        bsonObject.put("count", sum/count);
-
-        System.out.println("result->" + bsonObject);
-        result.setDoc(bsonObject);
-
-        context.write(NullWritable.get(), result);
+        if (count > 4)
+            result.set(sum/count);
+        context.write(key, result);
 
     }
 }

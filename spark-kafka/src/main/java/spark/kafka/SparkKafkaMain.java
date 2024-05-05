@@ -84,8 +84,8 @@ public class SparkKafkaMain {
                     df
                             .write()
                             .format("com.mongodb.spark.sql.DefaultSource")
-                            .mode("overwrite")
-                            .option("spark.mongodb.output.uri", "mongodb://mongo-container:27017/db." + collectionName)
+                            .mode("append")
+                            .option("spark.mongodb.output.uri", "localhost:27017/BigData." + collectionName)
                             .save();
                 }
         );

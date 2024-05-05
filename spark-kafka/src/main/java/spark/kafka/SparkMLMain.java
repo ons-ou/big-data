@@ -98,12 +98,11 @@ public class SparkMLMain {
                             .write()
                             .format("com.mongodb.spark.sql.DefaultSource")
                             .mode("append")
-                            .option("spark.mongodb.output.uri", "mongodb://mongo-container:27017/db.revenue_prediction")
+                            .option("spark.mongodb.output.uri", "localhost:27017/BigData.movie_revenue_prediction")
                             .save();
                 }
             }
         });
-
 
         streamingContext.start();
         streamingContext.awaitTermination();
